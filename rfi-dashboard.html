@@ -1,0 +1,1399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Construction RFI Analytics Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #0c0f14;
+      --bg-elevated: #121824;
+      --surface: #161d2a;
+      --surface-2: #1c2535;
+      --surface-hover: #252f42;
+      --border: #2a3548;
+      --border-subtle: rgba(255, 255, 255, 0.06);
+      --text: #e8edf4;
+      --text-muted: #8b9cb3;
+      --accent: #4d94ff;
+      --success: #34c759;
+      --warning: #ff9f0a;
+      --warning-dim: rgba(255, 159, 10, 0.14);
+      --warning-border: rgba(255, 159, 10, 0.45);
+      --critical: #ff453a;
+      --critical-dim: rgba(255, 69, 58, 0.14);
+      --critical-border: rgba(255, 69, 58, 0.5);
+      --info: #64d2ff;
+      --info-dim: rgba(100, 210, 255, 0.12);
+      --info-border: rgba(100, 210, 255, 0.42);
+      --card-radius: 16px;
+      --card-radius-sm: 12px;
+      --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+      --shadow-md: 0 8px 28px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--border-subtle);
+      --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+      --font: "Segoe UI", system-ui, -apple-system, sans-serif;
+      --section-gap: 2.5rem;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: var(--font);
+      background: var(--bg);
+      background-image:
+        radial-gradient(ellipse 120% 80% at 0% -20%, rgba(77, 148, 255, 0.12), transparent 50%),
+        radial-gradient(ellipse 80% 60% at 100% 0%, rgba(255, 69, 58, 0.06), transparent 45%),
+        radial-gradient(ellipse 60% 40% at 50% 100%, rgba(255, 159, 10, 0.05), transparent 50%);
+      color: var(--text);
+      line-height: 1.55;
+      min-height: 100vh;
+    }
+
+    .app-header {
+      background: linear-gradient(180deg, rgba(22, 29, 42, 0.95) 0%, rgba(12, 15, 20, 0.88) 100%);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-subtle);
+      padding: 1.5rem 2.25rem;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1.25rem;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .app-header h1 {
+      margin: 0;
+      font-size: 1.35rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    .app-header p {
+      margin: 0.25rem 0 0;
+      font-size: 0.875rem;
+      color: var(--text-muted);
+    }
+
+    .upload-zone {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .upload-zone label {
+      cursor: pointer;
+      background: linear-gradient(135deg, #4d94ff 0%, #2563eb 100%);
+      color: #fff;
+      padding: 0.6rem 1.25rem;
+      border-radius: 10px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      border: none;
+      box-shadow: 0 2px 12px rgba(77, 148, 255, 0.35), var(--shadow-inset);
+      transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s;
+    }
+
+    .upload-zone label:hover {
+      filter: brightness(1.06);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 18px rgba(77, 148, 255, 0.4), var(--shadow-inset);
+    }
+
+    .upload-zone input[type="file"] {
+      position: absolute;
+      width: 0;
+      height: 0;
+      opacity: 0;
+    }
+
+    .hint {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    main {
+      max-width: 1420px;
+      margin: 0 auto;
+      padding: 2rem 2.25rem 3.5rem;
+    }
+
+    section {
+      margin-bottom: var(--section-gap);
+    }
+
+    section h2 {
+      font-size: 0.8125rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin: 0 0 1.25rem;
+      padding-bottom: 0.65rem;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+    }
+
+    section h2::before {
+      content: "";
+      width: 4px;
+      height: 1rem;
+      border-radius: 2px;
+      background: linear-gradient(180deg, var(--accent), rgba(77, 148, 255, 0.35));
+      flex-shrink: 0;
+    }
+
+    .kpi-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+      gap: 1.15rem;
+    }
+
+    .kpi-card {
+      background: var(--surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--card-radius);
+      padding: 1.25rem 1.35rem;
+      box-shadow: var(--shadow-sm), 0 12px 40px rgba(0, 0, 0, 0.25), var(--shadow-inset);
+      transition: border-color 0.2s ease, transform 0.2s ease;
+    }
+
+    .kpi-card:hover {
+      border-color: rgba(77, 148, 255, 0.2);
+      transform: translateY(-2px);
+    }
+
+    .kpi-card .label {
+      font-size: 0.6875rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 600;
+    }
+
+    .kpi-card .value {
+      font-size: 1.875rem;
+      font-weight: 700;
+      margin-top: 0.4rem;
+      letter-spacing: -0.02em;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .filters-card {
+      background: var(--surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--card-radius);
+      padding: 1.5rem 1.65rem;
+      box-shadow: var(--shadow-sm), 0 12px 40px rgba(0, 0, 0, 0.22), var(--shadow-inset);
+    }
+
+    .filters-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 1.25rem 1.15rem;
+      align-items: end;
+    }
+
+    .field label {
+      display: block;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-bottom: 0.35rem;
+    }
+
+    .field select,
+    .field input {
+      width: 100%;
+      padding: 0.55rem 0.75rem;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--bg-elevated);
+      color: var(--text);
+      font-size: 0.875rem;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+
+    .field select:focus,
+    .field input:focus {
+      outline: none;
+      border-color: rgba(77, 148, 255, 0.55);
+      box-shadow: 0 0 0 3px rgba(77, 148, 255, 0.15);
+    }
+
+    .field input[type="date"] {
+      color-scheme: dark;
+    }
+
+    .btn-reset {
+      padding: 0.55rem 1.1rem;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 0.875rem;
+      font-weight: 500;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    .btn-reset:hover {
+      background: var(--surface-hover);
+      border-color: rgba(255, 255, 255, 0.12);
+    }
+
+    .table-wrap {
+      background: var(--surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--card-radius);
+      overflow: auto;
+      max-height: 440px;
+      box-shadow: var(--shadow-sm), 0 12px 40px rgba(0, 0, 0, 0.22), var(--shadow-inset);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8125rem;
+    }
+
+    th,
+    td {
+      padding: 0.75rem 1rem;
+      text-align: left;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      background: linear-gradient(180deg, var(--surface-2) 0%, var(--surface-hover) 100%);
+      font-weight: 600;
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      z-index: 1;
+    }
+
+    tr:hover td {
+      background: rgba(61, 139, 253, 0.06);
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 0.15rem 0.5rem;
+      border-radius: 999px;
+      font-size: 0.7rem;
+      font-weight: 600;
+    }
+
+    .badge-breach {
+      background: rgba(255, 69, 58, 0.2);
+      color: #ff8a80;
+    }
+
+    .badge-ok {
+      background: rgba(52, 199, 89, 0.2);
+      color: #6ee7a0;
+    }
+
+    .badge-open {
+      background: rgba(255, 159, 10, 0.2);
+      color: #ffc46b;
+    }
+
+    .outcome-pipe {
+      opacity: 0.45;
+      margin: 0 0.35em;
+      font-weight: 400;
+      color: var(--text-muted);
+    }
+
+    .charts-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(328px, 1fr));
+      gap: 1.35rem;
+    }
+
+    .chart-card {
+      background: var(--surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--card-radius);
+      padding: 0;
+      min-height: 300px;
+      overflow: hidden;
+      box-shadow: var(--shadow-sm), 0 12px 40px rgba(0, 0, 0, 0.22), var(--shadow-inset);
+      transition: border-color 0.2s ease, transform 0.2s ease;
+    }
+
+    .chart-card:hover {
+      border-color: rgba(77, 148, 255, 0.15);
+      transform: translateY(-2px);
+    }
+
+    .chart-card h3 {
+      margin: 0;
+      font-size: 0.9375rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      padding: 1.15rem 1.25rem 0.85rem;
+      border-bottom: 1px solid var(--border-subtle);
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, transparent 100%);
+    }
+
+    .chart-card .chart-canvas-wrap {
+      position: relative;
+      height: 228px;
+      padding: 0.75rem 1rem 1.15rem;
+    }
+
+    .alerts-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .alert-card {
+      border-radius: var(--card-radius);
+      padding: 1.45rem 1.5rem 1.4rem;
+      position: relative;
+      overflow: hidden;
+      box-shadow: var(--shadow-sm), 0 14px 36px rgba(0, 0, 0, 0.28);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .alert-card:hover {
+      transform: translateY(-2px);
+    }
+
+    /* Critical = red */
+    .alert-card.critical {
+      background: linear-gradient(145deg, var(--critical-dim) 0%, rgba(28, 18, 20, 0.92) 42%, var(--surface) 100%);
+      border: 1px solid var(--critical-border);
+      box-shadow:
+        var(--shadow-sm),
+        0 0 0 1px rgba(255, 69, 58, 0.12),
+        0 16px 48px rgba(255, 69, 58, 0.12),
+        inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    }
+
+    .alert-card.critical::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 5px;
+      border-radius: var(--card-radius) 0 0 var(--card-radius);
+      background: linear-gradient(180deg, #ff6b60 0%, var(--critical) 50%, #c9342b 100%);
+      box-shadow: 0 0 20px rgba(255, 69, 58, 0.45);
+    }
+
+    /* Warning = orange */
+    .alert-card.warning {
+      background: linear-gradient(145deg, var(--warning-dim) 0%, rgba(28, 22, 14, 0.9) 40%, var(--surface) 100%);
+      border: 1px solid var(--warning-border);
+      box-shadow:
+        var(--shadow-sm),
+        0 0 0 1px rgba(255, 159, 10, 0.1),
+        0 16px 48px rgba(255, 159, 10, 0.1),
+        inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    }
+
+    .alert-card.warning::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 5px;
+      border-radius: var(--card-radius) 0 0 var(--card-radius);
+      background: linear-gradient(180deg, #ffcc66 0%, var(--warning) 50%, #cc7700 100%);
+      box-shadow: 0 0 18px rgba(255, 159, 10, 0.35);
+    }
+
+    .alert-card .severity {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.6875rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      margin-bottom: 0.85rem;
+      padding: 0.35rem 0.65rem;
+      border-radius: 999px;
+    }
+
+    .alert-card.critical .severity {
+      color: #ffb4ae;
+      background: rgba(255, 69, 58, 0.22);
+      border: 1px solid rgba(255, 69, 58, 0.35);
+    }
+
+    .alert-card.warning .severity {
+      color: #ffd08a;
+      background: rgba(255, 159, 10, 0.2);
+      border: 1px solid rgba(255, 159, 10, 0.35);
+    }
+
+    /* Info = cyan / blue */
+    .alert-card.info {
+      background: linear-gradient(145deg, var(--info-dim) 0%, rgba(14, 22, 28, 0.92) 40%, var(--surface) 100%);
+      border: 1px solid var(--info-border);
+      box-shadow:
+        var(--shadow-sm),
+        0 0 0 1px rgba(100, 210, 255, 0.1),
+        0 16px 48px rgba(100, 210, 255, 0.08),
+        inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    }
+
+    .alert-card.info::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 5px;
+      border-radius: var(--card-radius) 0 0 var(--card-radius);
+      background: linear-gradient(180deg, #9ee8ff 0%, var(--info) 50%, #2a9bb8 100%);
+      box-shadow: 0 0 18px rgba(100, 210, 255, 0.35);
+    }
+
+    .alert-card.info .severity {
+      color: #a8e8ff;
+      background: rgba(100, 210, 255, 0.18);
+      border: 1px solid rgba(100, 210, 255, 0.32);
+    }
+
+    .alert-card.info .ids .ids-label {
+      color: #7dd8f0;
+    }
+
+    .alert-card .desc {
+      font-size: 0.9375rem;
+      margin-bottom: 1.05rem;
+      line-height: 1.62;
+      padding-left: 0.15rem;
+      white-space: pre-wrap;
+    }
+
+    .alert-card .ids {
+      font-size: 0.8125rem;
+      color: var(--text-muted);
+      margin-bottom: 1rem;
+      word-break: break-word;
+      line-height: 1.55;
+      padding: 0.9rem 1.05rem;
+      border-radius: var(--card-radius-sm);
+      background: rgba(0, 0, 0, 0.22);
+      border: 1px solid var(--border-subtle);
+      max-height: 12rem;
+      overflow-y: auto;
+    }
+
+    .alert-card .ids .ids-label {
+      display: block;
+      margin-bottom: 0.4rem;
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+    }
+
+    .alert-card.critical .ids .ids-label {
+      color: #ff9a94;
+    }
+
+    .alert-card.warning .ids .ids-label {
+      color: #ffcc80;
+    }
+
+    .alert-card .action {
+      font-size: 0.8125rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border-subtle);
+      color: #9dc4ff;
+      line-height: 1.5;
+      padding-left: 0.15rem;
+    }
+
+    .alert-card .action strong {
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .alert-card.neutral {
+      background: var(--surface);
+      border: 1px solid var(--border-subtle);
+      box-shadow: var(--shadow-sm), 0 12px 32px rgba(0, 0, 0, 0.2), var(--shadow-inset);
+    }
+
+    .alert-card.neutral::before {
+      display: none;
+    }
+
+    .alert-card.neutral .desc {
+      margin: 0;
+      color: var(--text-muted);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 3.5rem 2rem;
+      color: var(--text-muted);
+      max-width: 640px;
+      margin: 0 auto;
+    }
+
+    .empty-state strong {
+      color: var(--text);
+    }
+
+    .empty-state code {
+      font-size: 0.85em;
+      padding: 0.15em 0.4em;
+      border-radius: 6px;
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid var(--border-subtle);
+    }
+
+    #status-msg {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    #status-msg.error {
+      color: var(--critical);
+    }
+  </style>
+</head>
+<body>
+  <header class="app-header">
+    <div>
+      <h1>Construction RFI Dashboard</h1>
+      <p>Upload CSV · Filter · SLA · Charts · Alerts</p>
+    </div>
+    <div class="upload-zone">
+      <label for="csv-input">Choose CSV</label>
+      <input type="file" id="csv-input" accept=".csv,text/csv" />
+      <span id="status-msg" class="hint">No file loaded</span>
+    </div>
+  </header>
+
+  <main id="main-content" style="display: none">
+    <section>
+      <h2>Summary</h2>
+      <div class="kpi-row" id="kpi-row"></div>
+    </section>
+
+    <section>
+      <h2>Filters</h2>
+      <div class="filters-card">
+        <div class="filters-grid">
+          <div class="field">
+            <label for="f-package">Package</label>
+            <select id="f-package"></select>
+          </div>
+          <div class="field">
+            <label for="f-station">Station</label>
+            <select id="f-station"></select>
+          </div>
+          <div class="field">
+            <label for="f-subsystem">Subsystem</label>
+            <select id="f-subsystem"></select>
+          </div>
+          <div class="field">
+            <label for="f-result">Result / inspection status</label>
+            <select id="f-result"></select>
+          </div>
+          <div class="field">
+            <label for="f-date-from">Raised from</label>
+            <input type="date" id="f-date-from" />
+          </div>
+          <div class="field">
+            <label for="f-date-to">Raised to</label>
+            <input type="date" id="f-date-to" />
+          </div>
+          <div class="field">
+            <label>&nbsp;</label>
+            <button type="button" class="btn-reset" id="btn-reset-filters">Reset filters</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Rule engine alerts</h2>
+      <div class="alerts-grid" id="alerts-container"></div>
+    </section>
+
+    <section>
+      <h2>Charts</h2>
+      <div class="charts-grid">
+        <div class="chart-card">
+          <h3>RFI closure rate by package</h3>
+          <div class="chart-canvas-wrap"><canvas id="chart-closure"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <h3>SLA breach count by station</h3>
+          <div class="chart-canvas-wrap"><canvas id="chart-breach-station"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <h3>Approval vs rejection (monthly)</h3>
+          <div class="chart-canvas-wrap"><canvas id="chart-trend"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <h3>Open RFIs by subsystem</h3>
+          <div class="chart-canvas-wrap"><canvas id="chart-subsystem"></canvas></div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Filtered data</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>RFI ID</th>
+              <th>Package</th>
+              <th>Station</th>
+              <th>Subsystem</th>
+              <th>Activity</th>
+              <th>Raised</th>
+              <th>SLA</th>
+              <th>Closed</th>
+              <th>Outcome</th>
+              <th>SLA status</th>
+            </tr>
+          </thead>
+          <tbody id="table-body"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <div id="empty-placeholder" class="empty-state">
+    <p><strong>Load a CSV</strong> with columns: <code>rfi_id</code>, <code>package</code>, <code>station</code>,
+      <code>subsystem_type</code>, <code>activity_name</code>, <code>raised_date</code>, <code>sla_deadline</code>,
+      <code>closed_date</code>, and either <code>result</code> or <code>inspection_status</code> (or both). The
+      <code>remarks</code> column is ignored.</p>
+  </div>
+
+  <script>
+    (function () {
+      const COL = {
+        RFI_ID: "rfi_id",
+        PACKAGE: "package",
+        STATION: "station",
+        SUBSYSTEM: "subsystem_type",
+        ACTIVITY: "activity_name",
+        RAISED: "raised_date",
+        SLA: "sla_deadline",
+        CLOSED: "closed_date",
+        RESULT: "result",
+        INSPECTION: "inspection_status",
+      };
+
+      const IGNORE = ["remarks"];
+
+      /** Prefer `result`; if empty, use `inspection_status`. */
+      function getOutcome(row) {
+        const a = row[COL.RESULT];
+        const b = row[COL.INSPECTION];
+        if (a != null && String(a).trim() !== "") return String(a).trim();
+        if (b != null && String(b).trim() !== "") return String(b).trim();
+        return "";
+      }
+
+      function formatOutcomeCell(row) {
+        const r = row[COL.RESULT];
+        const i = row[COL.INSPECTION];
+        const hasR = r != null && String(r).trim() !== "";
+        const hasI = i != null && String(i).trim() !== "";
+        if (hasR && hasI && String(r).trim() !== String(i).trim()) {
+          return (
+            escapeHtml(String(r).trim()) +
+            '<span class="outcome-pipe">|</span>' +
+            escapeHtml(String(i).trim())
+          );
+        }
+        return escapeHtml(getOutcome(row) || "—");
+      }
+
+      let rawRows = [];
+      let charts = {};
+
+      function normKey(k) {
+        return String(k || "")
+          .trim()
+          .toLowerCase()
+          .replace(/\s+/g, "_");
+      }
+
+      function normalizeRow(row) {
+        const out = {};
+        Object.keys(row).forEach((k) => {
+          const nk = normKey(k);
+          if (IGNORE.includes(nk)) return;
+          out[nk] = row[k];
+        });
+        return out;
+      }
+
+      function parseDate(val) {
+        if (val == null || val === "") return null;
+        const s = String(val).trim();
+        if (!s) return null;
+        const d = new Date(s);
+        if (Number.isNaN(d.getTime())) return null;
+        return d;
+      }
+
+      function dateOnly(d) {
+        if (!d) return null;
+        return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+      }
+
+      function isRejected(outcome) {
+        const r = String(outcome || "").toLowerCase();
+        return (
+          r.includes("reject") ||
+          r === "no" ||
+          r === "denied" ||
+          r === "declined" ||
+          r.includes("fail") ||
+          r === "nok" ||
+          r === "not ok"
+        );
+      }
+
+      function isApproved(outcome) {
+        const r = String(outcome || "").toLowerCase().trim();
+        if (r.includes("approv") || r === "yes" || r === "accepted") return true;
+        if (r === "ok" || r.includes("accept")) return true;
+        if (r === "pass" || r === "passed" || r.startsWith("pass ") || r.endsWith(" pass")) return true;
+        return false;
+      }
+
+      /** SLA breach: closed_date missing OR closed_date > sla_deadline */
+      function isSlaBreach(row) {
+        const sla = parseDate(row[COL.SLA]);
+        if (!sla) return false;
+        const closed = parseDate(row[COL.CLOSED]);
+        if (!closed) return true;
+        return dateOnly(closed) > dateOnly(sla);
+      }
+
+      function isOpenBeyondSla(row, today) {
+        const closed = parseDate(row[COL.CLOSED]);
+        if (closed) return false;
+        const sla = parseDate(row[COL.SLA]);
+        if (!sla) return false;
+        return dateOnly(today) > dateOnly(sla);
+      }
+
+      function uniqueSorted(arr) {
+        return [...new Set(arr.filter((x) => x != null && x !== ""))].sort();
+      }
+
+      function getFilterState() {
+        return {
+          package: document.getElementById("f-package").value,
+          station: document.getElementById("f-station").value,
+          subsystem: document.getElementById("f-subsystem").value,
+          result: document.getElementById("f-result").value,
+          dateFrom: document.getElementById("f-date-from").value,
+          dateTo: document.getElementById("f-date-to").value,
+        };
+      }
+
+      function applyFilters(rows) {
+        const f = getFilterState();
+        return rows.filter((r) => {
+          if (f.package && String(r[COL.PACKAGE]) !== f.package) return false;
+          if (f.station && String(r[COL.STATION]) !== f.station) return false;
+          if (f.subsystem && String(r[COL.SUBSYSTEM]) !== f.subsystem) return false;
+          if (f.result && getOutcome(r) !== f.result) return false;
+          const raised = parseDate(r[COL.RAISED]);
+          if (f.dateFrom) {
+            const from = parseDate(f.dateFrom);
+            if (raised && dateOnly(raised) < dateOnly(from)) return false;
+            if (!raised) return false;
+          }
+          if (f.dateTo) {
+            const to = parseDate(f.dateTo);
+            if (raised && dateOnly(raised) > dateOnly(to)) return false;
+            if (!raised) return false;
+          }
+          return true;
+        });
+      }
+
+      function populateFilterDropdowns(rows) {
+        const pkgSel = document.getElementById("f-package");
+        const stSel = document.getElementById("f-station");
+        const subSel = document.getElementById("f-subsystem");
+        const resSel = document.getElementById("f-result");
+        const pkgs = uniqueSorted(rows.map((r) => r[COL.PACKAGE]));
+        const sts = uniqueSorted(rows.map((r) => r[COL.STATION]));
+        const subs = uniqueSorted(rows.map((r) => r[COL.SUBSYSTEM]));
+        const results = uniqueSorted(rows.map((r) => getOutcome(r)).filter(Boolean));
+
+        function refill(sel, items, allLabel) {
+          const cur = sel.value;
+          sel.innerHTML = `<option value="">${allLabel}</option>`;
+          items.forEach((x) => {
+            const o = document.createElement("option");
+            o.value = x;
+            o.textContent = x;
+            sel.appendChild(o);
+          });
+          if ([...sel.options].some((o) => o.value === cur)) sel.value = cur;
+        }
+
+        refill(pkgSel, pkgs, "All packages");
+        refill(stSel, sts, "All stations");
+        refill(subSel, subs, "All subsystems");
+        refill(resSel, results, "All outcomes");
+      }
+
+      function renderKpis(rows) {
+        const total = rows.length;
+        const closed = rows.filter((r) => parseDate(r[COL.CLOSED])).length;
+        const open = total - closed;
+        const breaches = rows.filter((r) => isSlaBreach(r)).length;
+        const critOpen = rows.filter((r) => isOpenBeyondSla(r, new Date())).length;
+
+        const el = document.getElementById("kpi-row");
+        el.innerHTML = [
+          { label: "Total RFIs", value: total },
+          { label: "Closed", value: closed },
+          { label: "Open", value: open },
+          { label: "SLA breaches (rule)", value: breaches },
+          { label: "Open past SLA", value: critOpen },
+        ]
+          .map(
+            (k) => `
+          <div class="kpi-card">
+            <div class="label">${k.label}</div>
+            <div class="value">${k.value}</div>
+          </div>`
+          )
+          .join("");
+      }
+
+      function renderTable(rows) {
+        const tb = document.getElementById("table-body");
+        tb.innerHTML = rows
+          .map((r) => {
+            const breach = isSlaBreach(r);
+            const closed = parseDate(r[COL.CLOSED]);
+            let badge;
+            if (!closed) {
+              badge = breach
+                ? '<span class="badge badge-breach">Open · SLA</span>'
+                : '<span class="badge badge-open">Open</span>';
+            } else {
+              badge = breach
+                ? '<span class="badge badge-breach">Breach</span>'
+                : '<span class="badge badge-ok">Met</span>';
+            }
+            return `<tr>
+            <td>${escapeHtml(r[COL.RFI_ID])}</td>
+            <td>${escapeHtml(r[COL.PACKAGE])}</td>
+            <td>${escapeHtml(r[COL.STATION])}</td>
+            <td>${escapeHtml(r[COL.SUBSYSTEM])}</td>
+            <td>${escapeHtml(r[COL.ACTIVITY])}</td>
+            <td>${escapeHtml(r[COL.RAISED])}</td>
+            <td>${escapeHtml(r[COL.SLA])}</td>
+            <td>${escapeHtml(r[COL.CLOSED] || "—")}</td>
+            <td>${formatOutcomeCell(r)}</td>
+            <td>${badge}</td>
+          </tr>`;
+          })
+          .join("");
+      }
+
+      function escapeHtml(s) {
+        if (s == null) return "";
+        return String(s)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function daysOverdueOpenSla(row, today) {
+        const sla = parseDate(row[COL.SLA]);
+        if (!sla) return 0;
+        const t = dateOnly(today).getTime();
+        const s = dateOnly(sla).getTime();
+        return Math.max(0, Math.round((t - s) / 86400000));
+      }
+
+      function highestBreachFocus(allRows) {
+        const countBy = (key) => {
+          const m = {};
+          allRows.forEach((r) => {
+            if (!isSlaBreach(r)) return;
+            const k = String(r[key] || "—").trim() || "—";
+            m[k] = (m[k] || 0) + 1;
+          });
+          return m;
+        };
+        const stMap = countBy(COL.STATION);
+        const pkgMap = countBy(COL.PACKAGE);
+        let stBest = null;
+        let stN = 0;
+        Object.keys(stMap).forEach((k) => {
+          if (stMap[k] > stN) {
+            stN = stMap[k];
+            stBest = k;
+          }
+        });
+        let pkgBest = null;
+        let pkgN = 0;
+        Object.keys(pkgMap).forEach((k) => {
+          if (pkgMap[k] > pkgN) {
+            pkgN = pkgMap[k];
+            pkgBest = k;
+          }
+        });
+        if (!stN && !pkgN) return null;
+        if (stN >= pkgN) {
+          return { phrase: `Station "${stBest}" has the highest number of SLA breaches (${stN}).`, kind: "station" };
+        }
+        return { phrase: `Package "${pkgBest}" has the highest number of SLA breaches (${pkgN}).`, kind: "package" };
+      }
+
+      function buildAlerts(allRows) {
+        const alerts = [];
+        const today = new Date();
+
+        const openPastSla = allRows.filter((r) => isOpenBeyondSla(r, today));
+        if (openPastSla.length) {
+          let longest = openPastSla[0];
+          let longestDays = daysOverdueOpenSla(longest, today);
+          openPastSla.forEach((r) => {
+            const d = daysOverdueOpenSla(r, today);
+            if (d > longestDays) {
+              longestDays = d;
+              longest = r;
+            }
+          });
+          const breachFocus = highestBreachFocus(allRows);
+          const nOpen = openPastSla.length;
+          const lines = [
+            `${nOpen} RFI${nOpen === 1 ? "" : "s"} ${nOpen === 1 ? "is" : "are"} currently open beyond SLA.`,
+            `Longest overdue: ${longest[COL.RFI_ID]} (${longestDays} day${longestDays === 1 ? "" : "s"}).`,
+          ];
+          if (breachFocus) lines.push(breachFocus.phrase);
+          alerts.push({
+            severity: "CRITICAL",
+            levelClass: "critical",
+            sortOrder: 0,
+            description: lines.join("\n\n"),
+            rfiIds: openPastSla.map((r) => r[COL.RFI_ID]),
+            action:
+              "Assign accountable owners, confirm realistic close-out dates, and escalate overdue items to package and station leads. Close or update each RFI with a documented disposition once resolved.",
+          });
+        }
+
+        const byActivity = {};
+        allRows.forEach((r) => {
+          if (!isRejected(getOutcome(r))) return;
+          const act = String(r[COL.ACTIVITY] || "").trim() || "(blank activity)";
+          if (!byActivity[act]) byActivity[act] = [];
+          byActivity[act].push(r);
+        });
+        const qualifyingActs = Object.keys(byActivity)
+          .map((name) => ({ name, rows: byActivity[name], count: byActivity[name].length }))
+          .filter((x) => x.count >= 3)
+          .sort((a, b) => b.count - a.count);
+
+        if (qualifyingActs.length) {
+          const maxInstances = qualifyingActs[0].count;
+          const severity = maxInstances > 10 ? "CRITICAL" : "WARNING";
+          const levelClass = maxInstances > 10 ? "critical" : "warning";
+          const top = qualifyingActs.slice(0, 3);
+          const remaining = qualifyingActs.length - top.length;
+          const descLines = [];
+          if (qualifyingActs.length >= 2) {
+            descLines.push(
+              "Multiple activities are showing repeated rejections indicating potential systemic quality issues."
+            );
+          }
+          top.forEach((t) => {
+            descLines.push(`Activity "${t.name}": repeated rejections (${t.count} instance${t.count === 1 ? "" : "s"}).`);
+          });
+          if (remaining > 0) {
+            descLines.push(
+              `${remaining} additional activit${remaining === 1 ? "y" : "ies"} exceed the repetition threshold; consult the affected RFI list and full register.`
+            );
+          }
+          const idSet = [];
+          qualifyingActs.forEach((q) => q.rows.forEach((r) => idSet.push(r[COL.RFI_ID])));
+          alerts.push({
+            severity,
+            levelClass,
+            sortOrder: 1,
+            description: descLines.join("\n\n"),
+            rfiIds: [...new Set(idSet)],
+            action:
+              "Conduct a structured review of scope, design intent, and submission quality for the affected activities. Align with reviewers, address recurring comments, and verify readiness prior to resubmission.",
+          });
+        }
+
+        const byStation = {};
+        allRows.forEach((r) => {
+          const st = String(r[COL.STATION] || "").trim() || "(unknown)";
+          if (!byStation[st])
+            byStation[st] = { totalAll: 0, decided: 0, rej: 0, rejRows: [] };
+          byStation[st].totalAll += 1;
+          const o = getOutcome(r);
+          const appr = isApproved(o);
+          const rej = isRejected(o);
+          if (appr || rej) {
+            byStation[st].decided += 1;
+            if (rej) {
+              byStation[st].rej += 1;
+              byStation[st].rejRows.push(r);
+            }
+          }
+        });
+        Object.keys(byStation).forEach((st) => {
+          const { totalAll, decided, rej, rejRows } = byStation[st];
+          const rate = decided ? rej / decided : 0;
+          if (rate > 0.3 && decided >= 3) {
+            const pct = (rate * 100).toFixed(0);
+            alerts.push({
+              severity: "WARNING",
+              levelClass: "warning",
+              sortOrder: 2,
+              description: [
+                `Station "${st}": rejection rate exceeds the 30% threshold (${pct}% of reviewed submissions with a clear approve/reject outcome).`,
+                `Total RFIs at this station: ${totalAll}. Rejected submissions in scope of this metric: ${rej} of ${decided} decided.`,
+              ].join("\n\n"),
+              rfiIds: rejRows.map((r) => r[COL.RFI_ID]),
+              action:
+                "Review recurring rejection drivers at this station, align expectations with approving authorities, and strengthen pre-submission verification prior to formal review.",
+            });
+          }
+        });
+
+        const missingSla = allRows.filter((r) => !parseDate(r[COL.SLA]));
+        if (missingSla.length) {
+          const m = missingSla.length;
+          alerts.push({
+            severity: "INFO",
+            levelClass: "info",
+            sortOrder: 3,
+            description: [
+              `${m} RFI${m === 1 ? "" : "s"} ${m === 1 ? "has" : "have"} no recorded SLA deadline.`,
+              "Automated SLA breach and overdue-open logic cannot be applied to these records until deadlines are supplied.",
+            ].join("\n\n"),
+            rfiIds: missingSla.map((r) => r[COL.RFI_ID]),
+            action:
+              "Complete SLA deadline fields in the authoritative RFI register and align dates with contractual or program milestones.",
+          });
+        }
+
+        const rank = { CRITICAL: 0, WARNING: 1, INFO: 2 };
+        alerts.sort((a, b) => {
+          const sev = (rank[a.severity] ?? 9) - (rank[b.severity] ?? 9);
+          if (sev !== 0) return sev;
+          return (a.sortOrder ?? 99) - (b.sortOrder ?? 99);
+        });
+
+        return alerts;
+      }
+
+      function renderAlerts(allRows) {
+        const container = document.getElementById("alerts-container");
+        const alerts = buildAlerts(allRows);
+        if (!alerts.length) {
+          container.innerHTML =
+            '<div class="alert-card neutral"><p class="desc">No rule violations detected on the full dataset.</p></div>';
+          return;
+        }
+        container.innerHTML = alerts
+          .map(
+            (a) => `
+          <div class="alert-card ${a.levelClass}">
+            <div class="severity">${a.severity}</div>
+            <div class="desc">${escapeHtml(a.description)}</div>
+            <div class="ids"><span class="ids-label">Affected RFI IDs</span>${a.rfiIds.length ? escapeHtml(a.rfiIds.join(", ")) : "—"}</div>
+            <div class="action"><strong>Recommended action</strong> — ${escapeHtml(a.action)}</div>
+          </div>`
+          )
+          .join("");
+      }
+
+      function destroyChart(id) {
+        if (charts[id]) {
+          charts[id].destroy();
+          delete charts[id];
+        }
+      }
+
+      function chartDefaults() {
+        return {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { labels: { color: "#8b9cb3" } },
+          },
+          scales: {
+            x: { ticks: { color: "#8b9cb3", maxRotation: 45 }, grid: { color: "#2d3a4f" } },
+            y: { ticks: { color: "#8b9cb3" }, grid: { color: "#2d3a4f" } },
+          },
+        };
+      }
+
+      function renderCharts(rows) {
+        destroyChart("closure");
+        destroyChart("breach");
+        destroyChart("trend");
+        destroyChart("subsystem");
+
+        const byPkg = {};
+        rows.forEach((r) => {
+          const p = String(r[COL.PACKAGE] || "—");
+          if (!byPkg[p]) byPkg[p] = { total: 0, closed: 0 };
+          byPkg[p].total += 1;
+          if (parseDate(r[COL.CLOSED])) byPkg[p].closed += 1;
+        });
+        const pkgLabels = Object.keys(byPkg).sort();
+        const closureRates = pkgLabels.map((p) => {
+          const x = byPkg[p];
+          return x.total ? Math.round((x.closed / x.total) * 1000) / 10 : 0;
+        });
+
+        const breachByStation = {};
+        rows.forEach((r) => {
+          if (!isSlaBreach(r)) return;
+          const s = String(r[COL.STATION] || "—");
+          breachByStation[s] = (breachByStation[s] || 0) + 1;
+        });
+        const stLabels = Object.keys(breachByStation).sort((a, b) => breachByStation[b] - breachByStation[a]);
+        const breachCounts = stLabels.map((s) => breachByStation[s]);
+
+        const monthly = {};
+        rows.forEach((r) => {
+          const d = parseDate(r[COL.RAISED]);
+          if (!d) return;
+          const key = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+          if (!monthly[key]) monthly[key] = { appr: 0, rej: 0 };
+          const o = getOutcome(r);
+          if (isApproved(o)) monthly[key].appr += 1;
+          else if (isRejected(o)) monthly[key].rej += 1;
+        });
+        const monthKeys = Object.keys(monthly).sort();
+        const apprSeries = monthKeys.map((k) => monthly[k].appr);
+        const rejSeries = monthKeys.map((k) => monthly[k].rej);
+
+        const subOpen = {};
+        rows.forEach((r) => {
+          if (parseDate(r[COL.CLOSED])) return;
+          const sub = String(r[COL.SUBSYSTEM] || "—");
+          subOpen[sub] = (subOpen[sub] || 0) + 1;
+        });
+        const subLabels = Object.keys(subOpen).sort((a, b) => subOpen[b] - subOpen[a]);
+        const subCounts = subLabels.map((s) => subOpen[s]);
+
+        const ctx1 = document.getElementById("chart-closure").getContext("2d");
+        charts.closure = new Chart(ctx1, {
+          type: "bar",
+          data: {
+            labels: pkgLabels,
+            datasets: [
+              {
+                label: "Closure rate %",
+                data: closureRates,
+                backgroundColor: "rgba(61, 139, 253, 0.6)",
+                borderColor: "#3d8bfd",
+                borderWidth: 1,
+              },
+            ],
+          },
+          options: {
+            ...chartDefaults(),
+            plugins: { ...chartDefaults().plugins, legend: { display: false } },
+            scales: { ...chartDefaults().scales, y: { ...chartDefaults().scales.y, max: 100 } },
+          },
+        });
+
+        const ctx2 = document.getElementById("chart-breach-station").getContext("2d");
+        charts.breach = new Chart(ctx2, {
+          type: "bar",
+          data: {
+            labels: stLabels.length ? stLabels : ["—"],
+            datasets: [
+              {
+                label: "SLA breaches",
+                data: stLabels.length ? breachCounts : [0],
+                backgroundColor: "rgba(255, 69, 58, 0.55)",
+                borderColor: "#ff453a",
+                borderWidth: 1,
+              },
+            ],
+          },
+          options: { ...chartDefaults(), plugins: { ...chartDefaults().plugins, legend: { display: false } } },
+        });
+
+        const ctx3 = document.getElementById("chart-trend").getContext("2d");
+        charts.trend = new Chart(ctx3, {
+          type: "line",
+          data: {
+            labels: monthKeys.length ? monthKeys : ["—"],
+            datasets: [
+              {
+                label: "Approved",
+                data: monthKeys.length ? apprSeries : [0],
+                borderColor: "#34c759",
+                backgroundColor: "rgba(52, 199, 89, 0.15)",
+                fill: true,
+                tension: 0.25,
+              },
+              {
+                label: "Rejected",
+                data: monthKeys.length ? rejSeries : [0],
+                borderColor: "#ff453a",
+                backgroundColor: "rgba(255, 69, 58, 0.1)",
+                fill: true,
+                tension: 0.25,
+              },
+            ],
+          },
+          options: chartDefaults(),
+        });
+
+        const ctx4 = document.getElementById("chart-subsystem").getContext("2d");
+        charts.subsystem = new Chart(ctx4, {
+          type: "doughnut",
+          data: {
+            labels: subLabels.length ? subLabels : ["No open RFIs"],
+            datasets: [
+              {
+                data: subLabels.length ? subCounts : [1],
+                backgroundColor: [
+                  "#3d8bfd",
+                  "#34c759",
+                  "#ff9f0a",
+                  "#ff453a",
+                  "#bf5af2",
+                  "#64d2ff",
+                  "#ffd60a",
+                  "#ac8e68",
+                ],
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { position: "right", labels: { color: "#8b9cb3", boxWidth: 12 } },
+            },
+          },
+        });
+      }
+
+      function refresh() {
+        if (!rawRows.length) return;
+        populateFilterDropdowns(rawRows);
+        const filtered = applyFilters(rawRows);
+        renderKpis(filtered);
+        renderTable(filtered);
+        renderCharts(filtered);
+        renderAlerts(rawRows);
+      }
+
+      function validateHeaders(firstRow) {
+        const keys = Object.keys(firstRow).map(normKey);
+        const need = [
+          COL.RFI_ID,
+          COL.PACKAGE,
+          COL.STATION,
+          COL.SUBSYSTEM,
+          COL.ACTIVITY,
+          COL.RAISED,
+          COL.SLA,
+          COL.CLOSED,
+        ];
+        const missing = need.filter((n) => !keys.includes(n));
+        const hasOutcome = keys.includes(COL.RESULT) || keys.includes(COL.INSPECTION);
+        if (!hasOutcome) missing.push("result or inspection_status");
+        return missing;
+      }
+
+      function onFile(file) {
+        const status = document.getElementById("status-msg");
+        status.textContent = "Parsing…";
+        status.classList.remove("error");
+
+        Papa.parse(file, {
+          header: true,
+          skipEmptyLines: true,
+          complete: (res) => {
+            const data = (res.data || []).map(normalizeRow).filter((r) => Object.keys(r).length);
+            if (!data.length) {
+              status.textContent = "No rows found.";
+              status.classList.add("error");
+              return;
+            }
+            const missing = validateHeaders(data[0]);
+            if (missing.length) {
+              status.textContent = "Missing columns: " + missing.join(", ");
+              status.classList.add("error");
+              return;
+            }
+            rawRows = data;
+            status.textContent = file.name + " · " + data.length + " rows";
+            document.getElementById("main-content").style.display = "block";
+            document.getElementById("empty-placeholder").style.display = "none";
+            document.getElementById("f-date-from").value = "";
+            document.getElementById("f-date-to").value = "";
+            refresh();
+          },
+          error: (err) => {
+            status.textContent = err.message || "Parse error";
+            status.classList.add("error");
+          },
+        });
+      }
+
+      document.getElementById("csv-input").addEventListener("change", (e) => {
+        const f = e.target.files && e.target.files[0];
+        if (f) onFile(f);
+      });
+
+      ["f-package", "f-station", "f-subsystem", "f-result", "f-date-from", "f-date-to"].forEach((id) => {
+        document.getElementById(id).addEventListener("change", () => {
+          if (rawRows.length) refresh();
+        });
+      });
+
+      document.getElementById("btn-reset-filters").addEventListener("click", () => {
+        document.getElementById("f-package").value = "";
+        document.getElementById("f-station").value = "";
+        document.getElementById("f-subsystem").value = "";
+        document.getElementById("f-result").value = "";
+        document.getElementById("f-date-from").value = "";
+        document.getElementById("f-date-to").value = "";
+        if (rawRows.length) refresh();
+      });
+    })();
+  </script>
+</body>
+</html>
